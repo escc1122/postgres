@@ -82,3 +82,53 @@ END;
 --main end
 
 $BODY$;
+
+
+CREATE FUNCTION public.jsonb_test_after_insert()
+    RETURNS trigger
+    LANGUAGE 'plpgsql'
+    COST 100
+    VOLATILE NOT LEAKPROOF 
+AS $BODY$
+
+DECLARE
+	def_original_id bigint;
+	def_page_id bigint;
+	def_response_data_array jsonb;
+	def_from_type integer;
+	test boolean;
+  text_var1 text;
+  text_var2 text;
+  text_var3 text;
+BEGIN
+	IF(TG_OP='INSERT') THEN
+		def_original_id = NEW.original_id::bigint;
+		def_page_id = NEW.page_id::bigint;
+		def_response_data_array = (NEW.response_value->'data')::jsonb;
+		def_from_type = 0;
+		BEGIN
+			SELECT public.jsonb_test(def_original_id ,def_page_id,def_from_type,def_response_data_array) into test; 
+		EXCEPTION WHEN OTHERS THEN
+			GET STACKED DIAGNOSTICS text_var1 = MESSAGE_TEXT,
+                          text_var2 = PG_EXCEPTION_DETAIL,
+                          text_var3 = PG_EXCEPTION_HINT;
+			INSERT INTO facebook_original_data.trigger_error_log(
+			trigger_name, "MESSAGE_TEXT", "PG_EXCEPTION_DETAIL", "PG_EXCEPTION_HINT")
+			VALUES ('jsonb_test_after_insert', text_var1, text_var2, text_var3);		
+			RETURN NEW;
+		END;
+		
+	END IF;
+  RETURN NEW;
+END;
+
+$BODY$;
+
+CREATE TRIGGER public.jsonb_test_after_insert_trigger
+    AFTER INSERT 
+    ON public.json_test
+    FOR EACH ROW
+    EXECUTE PROCEDURE public.jsonb_test_after_insert();
+
+
+
